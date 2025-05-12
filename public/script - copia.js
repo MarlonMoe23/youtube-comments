@@ -2,11 +2,6 @@ let commentsData = null;
 let currentSortColumn = null;
 let isAscending = true;
 
-// Determinar la URL base según el entorno
-const baseUrl = window.location.hostname === 'localhost' 
-    ? 'http://localhost:3000' 
-    : '';
-
 function timeAgo(dateString) {
     const date = new Date(dateString);
     const now = new Date();
@@ -70,7 +65,7 @@ document.getElementById('submit-button').addEventListener('click', async () => {
         outputDiv.innerHTML = '';
         downloadButton.style.display = 'none';
 
-        const response = await fetch(`${baseUrl}/api/comments`, {
+        const response = await fetch('/api/comments', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
