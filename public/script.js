@@ -75,20 +75,20 @@ document.getElementById('submit-button').addEventListener('click', async () => {
 
         console.log('Respuesta recibida:', response.status);
 
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
         const data = await response.json();
         console.log('Datos recibidos:', data);
-      
-        if (response.ok) {
+
+        if (Array.isArray(data)) {
             commentsData = data;
             outputDiv.innerHTML = updateStats(data) + createTable(data);
             downloadButton.style.display = 'inline-block';
             addSortListeners();
         } else {
-            outputDiv.innerHTML = `
-                <div class="error-message">
-                    Error: ${data.error || 'Error desconocido'}
-                    ${data.details ? `<br>Detalles: ${data.details}` : ''}
-                </div>`;
+            throw new Error('Formato de datos inválido');
         }
     } catch (error) {
         console.error('Error completo:', error);
@@ -140,7 +140,7 @@ function addSortListeners() {
     headers.forEach(header => {
         header.addEventListener('click', () => {
             const column = header.getAttribute('data-column');
-          
+            
             headers.forEach(h => {
                 if (h !== header) {
                     h.classList.remove('asc', 'desc');
@@ -209,4 +209,37 @@ function createTable(data) {
             </table>
         </div>
     `;
+}
+
+// Funcionalidad del botón de pegado
+document.getElementById('paste-button').addEventListener('click', async () => {
+    try {
+        const text = await navigator.clipboard.readText();
+        if (text.includes('youtube.com') || text.includes('youtu.be')) {
+            document.getElementById('youtube-url').value = text;
+            showToast('URL pegada correctamente');
+        } else {
+            showToast('El texto copiado no parece ser un enlace de YouTube');
+        }
+    } catch (err) {
+        showToast('No se pudo acceder al portapapeles');
+    }
+});
+
+// Detectar automáticamente cuando se copia un enlace de YouTube
+document.addEventListener('paste', (event) => {
+    const text = event.clipboardData.getData('text');
+    if (text.includes('youtube.com') || text.includes('youtu.be')) {
+        document.getElementById('youtube-url').value = text;
+        showToast('URL de YouTube detectada y pegada');
+    }
+});
+
+function showToast(message) {
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.classList.add('show');
+    setTimeout(() => {
+        toast.classList.remove('show');
+    }, 3000);
 }

@@ -21,11 +21,13 @@ function extractVideoId(url) {
 }
 
 module.exports = async (req, res) => {
+    console.log('API Route hit:', req.method);
+    console.log('Request body:', req.body);
+
     // Configurar CORS
-    res.setHeader('Access-Control-Allow-Credentials', true);
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST');
-    res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
     // Manejar preflight request
     if (req.method === 'OPTIONS') {
@@ -58,6 +60,8 @@ module.exports = async (req, res) => {
         if (!videoId) {
             return res.status(400).json({ error: 'URL de YouTube inválida' });
         }
+
+        console.log('Procesando video ID:', videoId);
 
         const comments = [];
         let nextPageToken = null;
@@ -94,8 +98,11 @@ module.exports = async (req, res) => {
             }
 
             nextPageToken = response.data.nextPageToken;
+            console.log('Comentarios obtenidos en esta página:', response.data.items.length);
+
         } while (nextPageToken);
 
+        console.log('Total de comentarios obtenidos:', comments.length);
         return res.status(200).json(comments);
 
     } catch (error) {
