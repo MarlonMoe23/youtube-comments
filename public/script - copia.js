@@ -77,7 +77,7 @@ document.getElementById('submit-button').addEventListener('click', async () => {
 
         const data = await response.json();
         console.log('Datos recibidos:', data);
-      
+        
         if (response.ok) {
             commentsData = data;
             outputDiv.innerHTML = updateStats(data) + createTable(data);
@@ -140,7 +140,7 @@ function addSortListeners() {
     headers.forEach(header => {
         header.addEventListener('click', () => {
             const column = header.getAttribute('data-column');
-          
+            
             headers.forEach(h => {
                 if (h !== header) {
                     h.classList.remove('asc', 'desc');
