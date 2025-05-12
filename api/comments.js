@@ -1,7 +1,7 @@
 const { google } = require('googleapis');
 require('dotenv').config();
 
-// Función para extraer el ID del video de una URL de YouTube
+// Función para extraer el ID del video
 function extractVideoId(url) {
     try {
         const patterns = [
@@ -27,28 +27,34 @@ module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST');
     res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
 
-    // Manejar OPTIONS para CORS
+    // Manejar preflight request
     if (req.method === 'OPTIONS') {
         res.status(200).end();
         return;
     }
 
+    // Verificar método
     if (req.method !== 'POST') {
-        return res.status(405).json({ error: 'Method not allowed' });
+        return res.status(405).json({ error: 'Método no permitido' });
     }
 
-    const youtube = google.youtube({
-        version: 'v3',
-        auth: process.env.YOUTUBE_API_KEY
-    });
-
     try {
-        const { url } = req.body;
-        if (!url) {
+        // Verificar API KEY
+        if (!process.env.YOUTUBE_API_KEY) {
+            throw new Error('YouTube API Key no configurada');
+        }
+
+        const youtube = google.youtube({
+            version: 'v3',
+            auth: process.env.YOUTUBE_API_KEY
+        });
+
+        // Verificar body de la request
+        if (!req.body || !req.body.url) {
             return res.status(400).json({ error: 'URL no proporcionada' });
         }
 
-        const videoId = extractVideoId(url);
+        const videoId = extractVideoId(req.body.url);
         if (!videoId) {
             return res.status(400).json({ error: 'URL de YouTube inválida' });
         }
@@ -88,14 +94,13 @@ module.exports = async (req, res) => {
             }
 
             nextPageToken = response.data.nextPageToken;
-            
         } while (nextPageToken);
 
-        res.json(comments);
+        return res.status(200).json(comments);
 
     } catch (error) {
-        console.error('Error:', error);
-        res.status(500).json({ 
+        console.error('Error en el servidor:', error);
+        return res.status(500).json({ 
             error: 'Error al procesar la solicitud',
             details: error.message
         });

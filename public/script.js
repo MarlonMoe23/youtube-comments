@@ -73,16 +73,25 @@ document.getElementById('submit-button').addEventListener('click', async () => {
         const response = await fetch(`${baseUrl}/api/comments`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
             },
             body: JSON.stringify({ url })
         });
 
         console.log('Respuesta recibida:', response.status);
-
-        const data = await response.json();
-        console.log('Datos recibidos:', data);
         
+        // Agregar este bloque para debug
+        const responseText = await response.text();
+        console.log('Respuesta texto:', responseText);
+        
+        let data;
+        try {
+            data = JSON.parse(responseText);
+        } catch (e) {
+            throw new Error(`Error al parsear JSON: ${responseText}`);
+        }
+
         if (response.ok) {
             commentsData = data;
             outputDiv.innerHTML = updateStats(data) + createTable(data);
