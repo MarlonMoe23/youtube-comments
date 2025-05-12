@@ -1,6 +1,7 @@
 const express = require('express');
 const { google } = require('googleapis');
 const cors = require('cors');
+const path = require('path');
 require('dotenv').config();
 
 const app = express();
@@ -8,7 +9,16 @@ const app = express();
 // Configurar CORS
 app.use(cors());
 app.use(express.json());
-app.use(express.static('.')); // Servir archivos estáticos desde el directorio actual
+
+// Servir archivos estáticos
+app.use(express.static(path.join(__dirname)));
+
+// Asegurarse de que todas las rutas no-API sirvan index.html
+app.get('*', (req, res) => {
+    if (!req.path.startsWith('/api')) {
+        res.sendFile(path.join(__dirname, 'index.html'));
+    }
+});
 
 const youtube = google.youtube({
     version: 'v3',
@@ -16,7 +26,52 @@ const youtube = google.youtube({
 });
 
 async function getVideoComments(videoId) {
-    // ... (mantén el resto de tu código igual)
+    const comments = [];
+    let nextPageToken = '';
+
+    try {
+        do {
+            const response = await youtube.commentThreads.list({
+                part: ['snippet', 'replies'],
+                videoId: videoId,
+                maxResults: 100,
+                pageToken: nextPageToken || ''
+            });
+
+            const items = response.data.items;
+            
+            for (const item of items) {
+                const comment = item.snippet.topLevelComment.snippet;
+                comments.push({
+                    Autor: comment.authorDisplayName,
+                    Comentario: comment.textDisplay,
+                    Likes: comment.likeCount,
+                    PublicadoEn: comment.publishedAt,
+                    EsRespuesta: 'No'
+                });
+
+                // Procesar respuestas si existen
+                if (item.replies) {
+                    item.replies.comments.forEach(reply => {
+                        comments.push({
+                            Autor: reply.snippet.authorDisplayName,
+                            Comentario: reply.snippet.textDisplay,
+                            Likes: reply.snippet.likeCount,
+                            PublicadoEn: reply.snippet.publishedAt,
+                            EsRespuesta: 'Sí'
+                        });
+                    });
+                }
+            }
+
+            nextPageToken = response.data.nextPageToken;
+        } while (nextPageToken);
+
+        return comments;
+
+    } catch (error) {
+        throw new Error(`Error al obtener comentarios: ${error.message}`);
+    }
 }
 
 app.post('/api/comments', async (req, res) => {
@@ -51,10 +106,10 @@ function extractVideoId(url) {
     return (match && match[7].length === 11) ? match[7] : null;
 }
 
-// Para Vercel, necesitamos exportar la app
+// Exportar la app para Vercel
 module.exports = app;
 
-// Solo escuchar en puerto si no estamos en Vercel
+// Iniciar el servidor solo en desarrollo
 if (process.env.NODE_ENV !== 'production') {
     const PORT = process.env.PORT || 3000;
     app.listen(PORT, () => {
