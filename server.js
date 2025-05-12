@@ -1,23 +1,29 @@
 const express = require('express');
-const { google } = require('googleapis');
 const cors = require('cors');
-const path = require('path');
+const { google } = require('googleapis');
 require('dotenv').config();
 
 const app = express();
+const port = process.env.PORT || 3000;
+const DEBUG = true; // Activar/desactivar logs de debugging
 
-// Configurar CORS
+// Verificar API KEY al inicio
+if (!process.env.YOUTUBE_API_KEY) {
+    console.error('ERROR: No se encontró la API KEY de YouTube. Asegúrate de tener un archivo .env con YOUTUBE_API_KEY=tu_api_key');
+    process.exit(1);
+}
+
 app.use(cors());
 app.use(express.json());
+app.use(express.static('public'));
 
-// Servir archivos estáticos
-app.use(express.static(path.join(__dirname)));
-
-// Asegurarse de que todas las rutas no-API sirvan index.html
-app.get('*', (req, res) => {
-    if (!req.path.startsWith('/api')) {
-        res.sendFile(path.join(__dirname, 'index.html'));
+// Middleware para logging
+app.use((req, res, next) => {
+    if (DEBUG) {
+        console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+        if (req.body) console.log('Body:', req.body);
     }
+    next();
 });
 
 const youtube = google.youtube({
@@ -25,74 +31,97 @@ const youtube = google.youtube({
     auth: process.env.YOUTUBE_API_KEY
 });
 
-async function getVideoComments(videoId) {
-    const comments = [];
-    let nextPageToken = '';
-
+function extractVideoId(url) {
     try {
-        do {
-            const response = await youtube.commentThreads.list({
-                part: ['snippet', 'replies'],
-                videoId: videoId,
-                maxResults: 100,
-                pageToken: nextPageToken || ''
-            });
+        const patterns = [
+            /(?:youtu\.be\/|youtube\.com\/watch\?v=)([^?&]+)/,
+            /v=([^&]+)/
+        ];
 
-            const items = response.data.items;
-            
-            for (const item of items) {
-                const comment = item.snippet.topLevelComment.snippet;
-                comments.push({
-                    Autor: comment.authorDisplayName,
-                    Comentario: comment.textDisplay,
-                    Likes: comment.likeCount,
-                    PublicadoEn: comment.publishedAt,
-                    EsRespuesta: 'No'
-                });
-
-                // Procesar respuestas si existen
-                if (item.replies) {
-                    item.replies.comments.forEach(reply => {
-                        comments.push({
-                            Autor: reply.snippet.authorDisplayName,
-                            Comentario: reply.snippet.textDisplay,
-                            Likes: reply.snippet.likeCount,
-                            PublicadoEn: reply.snippet.publishedAt,
-                            EsRespuesta: 'Sí'
-                        });
-                    });
-                }
-            }
-
-            nextPageToken = response.data.nextPageToken;
-        } while (nextPageToken);
-
-        return comments;
-
+        for (const pattern of patterns) {
+            const match = url.match(pattern);
+            if (match) return match[1];
+        }
+        return null;
     } catch (error) {
-        throw new Error(`Error al obtener comentarios: ${error.message}`);
+        console.error('Error al extraer video ID:', error);
+        return null;
     }
 }
 
 app.post('/api/comments', async (req, res) => {
-    try {
-        const { url } = req.body;
-        console.log('URL recibida:', url);
+    if (DEBUG) {
+        console.log('\n--- Nueva solicitud de comentarios ---');
+        console.log('API KEY presente:', !!process.env.YOUTUBE_API_KEY);
+        console.log('URL recibida:', req.body.url);
+    }
 
-        // Extraer el ID del video
-        const videoId = extractVideoId(url);
-        if (!videoId) {
-            return res.status(400).json({ 
-                error: 'URL inválida',
-                details: 'No se pudo extraer el ID del video de la URL proporcionada'
-            });
+    try {
+        console.log('Recibiendo solicitud para URL:', req.body.url);
+        
+        const { url } = req.body;
+        if (!url) {
+            return res.status(400).json({ error: 'URL no proporcionada' });
         }
 
-        const comments = await getVideoComments(videoId);
+        const videoId = extractVideoId(url);
+        console.log('Video ID extraído:', videoId);
+        
+        if (!videoId) {
+            return res.status(400).json({ error: 'URL de YouTube inválida' });
+        }
+
+        const comments = [];
+        let nextPageToken = null;
+
+        do {
+            try {
+                console.log('Obteniendo comentarios, página:', nextPageToken || 'inicial');
+                
+                const response = await youtube.commentThreads.list({
+                    part: ['snippet', 'replies'],
+                    videoId: videoId,
+                    maxResults: 100,
+                    pageToken: nextPageToken
+                });
+
+                for (const item of response.data.items) {
+                    const topComment = item.snippet.topLevelComment.snippet;
+                    comments.push({
+                        Autor: topComment.authorDisplayName,
+                        Comentario: topComment.textDisplay,
+                        Likes: topComment.likeCount,
+                        PublicadoEn: topComment.publishedAt,
+                        EsRespuesta: 'No'
+                    });
+
+                    if (item.replies) {
+                        for (const reply of item.replies.comments) {
+                            comments.push({
+                                Autor: reply.snippet.authorDisplayName,
+                                Comentario: reply.snippet.textDisplay,
+                                Likes: reply.snippet.likeCount,
+                                PublicadoEn: reply.snippet.publishedAt,
+                                EsRespuesta: 'Sí'
+                            });
+                        }
+                    }
+                }
+
+                nextPageToken = response.data.nextPageToken;
+                console.log('Comentarios obtenidos en esta página:', response.data.items.length);
+                
+            } catch (error) {
+                console.error('Error al obtener comentarios:', error.response?.data || error);
+                throw new Error('Error al obtener comentarios de YouTube');
+            }
+        } while (nextPageToken);
+
+        console.log('Total de comentarios obtenidos:', comments.length);
         res.json(comments);
 
     } catch (error) {
-        console.error('Error completo:', error);
+        console.error('Error en el servidor:', error);
         res.status(500).json({ 
             error: 'Error al procesar la solicitud',
             details: error.message
@@ -100,19 +129,7 @@ app.post('/api/comments', async (req, res) => {
     }
 });
 
-function extractVideoId(url) {
-    const regExp = /^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/;
-    const match = url.match(regExp);
-    return (match && match[7].length === 11) ? match[7] : null;
-}
-
-// Exportar la app para Vercel
-module.exports = app;
-
-// Iniciar el servidor solo en desarrollo
-if (process.env.NODE_ENV !== 'production') {
-    const PORT = process.env.PORT || 3000;
-    app.listen(PORT, () => {
-        console.log(`Servidor corriendo en puerto ${PORT}`);
-    });
-}
+app.listen(port, () => {
+    console.log(`Servidor corriendo en http://localhost:${port}`);
+    console.log('API KEY configurada:', process.env.YOUTUBE_API_KEY ? 'SÍ' : 'NO');
+});
