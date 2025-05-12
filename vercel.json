@@ -1,4 +1,4 @@
-echo '{
+{
   "version": 2,
   "builds": [
     {
@@ -8,8 +8,12 @@ echo '{
   ],
   "routes": [
     {
+      "src": "/api/comments",
+      "dest": "server.js"
+    },
+    {
       "src": "/(.*)",
       "dest": "server.js"
     }
   ]
-}' > vercel.json
+}
